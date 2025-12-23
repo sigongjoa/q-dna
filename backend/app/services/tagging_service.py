@@ -13,9 +13,25 @@ class TaggingService:
         """
         # Mock logic based on keywords in text
         tags = []
-        if "equation" in question_text or "x =" in question_text:
-            tags.append({"tag": "Algebra", "confidence": 0.95, "type": "concept"})
-            tags.append({"tag": "Quadratics", "confidence": 0.88, "type": "concept"})
+        text_lower = question_text.lower()
+        
+        if "equation" in text_lower or "x =" in text_lower or "\\sqrt" in text_lower:
+            tags.append({"tag": "Algebra", "confidence": 0.95, "type": "subject"})
+            
+        if "function" in text_lower or "f(x)" in text_lower or "g(x)" in text_lower:
+             tags.append({"tag": "Functions", "confidence": 0.98, "type": "concept"})
+             tags.append({"tag": "Analysis", "confidence": 0.90, "type": "cognitive_level"})
+
+        if "derivative" in text_lower or "differential" in text_lower or "maximum" in text_lower or "minimum" in text_lower:
+            tags.append({"tag": "Calculus", "confidence": 0.99, "type": "subject"})
+            tags.append({"tag": "Differentiation", "confidence": 0.96, "type": "concept"})
+            tags.append({"tag": "High Difficulty", "confidence": 0.85, "type": "difficulty"})
+
+        if "cubic" in text_lower or "degree 3" in text_lower:
+             tags.append({"tag": "Polynomials", "confidence": 0.92, "type": "concept"})
+
+        if "\\sqrt" in text_lower or "root" in text_lower:
+             tags.append({"tag": "Exponents & Radicals", "confidence": 0.99, "type": "concept"})
         
         return tags
 
