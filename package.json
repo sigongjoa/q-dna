@@ -1,0 +1,18 @@
+{
+  "name": "q-dna",
+  "version": "1.0.0",
+  "description": "AI 기반의 적응형 학습 플랫폼을 구축하기 위한 지능형 문제 은행 및 태깅 시스템입니다. 이 프로젝트는 교육 데이터 관리의 효율성을 극대화하고, 개인 맞춤형 학습 경험을 제공하는 것을 목표로 합니다.",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@upstash/context7-mcp": "^1.0.33"
+  }
+}
