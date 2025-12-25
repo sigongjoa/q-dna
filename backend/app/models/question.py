@@ -36,7 +36,7 @@ class Question(Base):
     status: Mapped[str] = mapped_column(String(20), default="draft") # draft, active, archived
     
     # Audit
-    created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True)) 
+    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), nullable=True) 
     created_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 

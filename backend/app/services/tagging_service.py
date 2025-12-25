@@ -1,47 +1,185 @@
 from typing import List, Dict
-import json
+from app.services.ollama_service import ollama_service
+
 
 class TaggingService:
-    def __init__(self):
-        # Initialize LLM client here (e.g. OpenAI)
-        pass
+    """
+    AI-powered tagging service using Ollama LLM.
+    Analyzes question content and generates relevant tags.
+    """
 
     async def get_tag_recommendations(self, question_text: str) -> List[Dict]:
         """
-        AI Auto-Tagging logic as described in Phase 4.2.
-        Uses LLM prompts to extract curriculum path, cognitive level, and keywords.
+        AI Auto-Tagging logic using Ollama LLM.
+        Extracts curriculum path, cognitive level, skills, and concepts.
+
+        Returns: List of {"tag": str, "confidence": float, "type": str}
         """
-        # Mock logic based on keywords in text
-        tags = []
-        text_lower = question_text.lower()
-        
-        if "equation" in text_lower or "x =" in text_lower or "\\sqrt" in text_lower:
-            tags.append({"tag": "Algebra", "confidence": 0.95, "type": "subject"})
-            
-        if "function" in text_lower or "f(x)" in text_lower or "g(x)" in text_lower:
-             tags.append({"tag": "Functions", "confidence": 0.98, "type": "concept"})
-             tags.append({"tag": "Analysis", "confidence": 0.90, "type": "cognitive_level"})
+        prompt = f"""Analyze this educational question and generate relevant tags.
 
-        if "derivative" in text_lower or "differential" in text_lower or "maximum" in text_lower or "minimum" in text_lower:
-            tags.append({"tag": "Calculus", "confidence": 0.99, "type": "subject"})
-            tags.append({"tag": "Differentiation", "confidence": 0.96, "type": "concept"})
-            tags.append({"tag": "High Difficulty", "confidence": 0.85, "type": "difficulty"})
+Question:
+{question_text}
 
-        if "cubic" in text_lower or "degree 3" in text_lower:
-             tags.append({"tag": "Polynomials", "confidence": 0.92, "type": "concept"})
+Identify and categorize tags in these types:
+1. subject: Main subject area (Math, Science, English, etc.)
+2. concept: Specific concepts (Algebra, Geometry, Quadratic Equations, etc.)
+3. skill: Required skills (Problem Solving, Critical Thinking, etc.)
+4. cognitive_level: Bloom's taxonomy (Remember, Understand, Apply, Analyze, Evaluate, Create)
+5. difficulty: Difficulty level (Easy, Medium, Hard)
 
-        if "\\sqrt" in text_lower or "root" in text_lower:
-             tags.append({"tag": "Exponents & Radicals", "confidence": 0.99, "type": "concept"})
-        
-        return tags
+Return JSON array of tags with confidence scores (0.0-1.0):
+{{
+    "tags": [
+        {{"tag": "Mathematics", "type": "subject", "confidence": 0.99}},
+        {{"tag": "Algebra", "type": "concept", "confidence": 0.95}},
+        {{"tag": "Apply", "type": "cognitive_level", "confidence": 0.90}}
+    ]
+}}
+
+Be precise and assign high confidence (>0.9) only to clearly relevant tags."""
+
+        try:
+            response = await ollama_service.generate_text(
+                prompt=prompt,
+                format="json",
+                temperature=0.3  # Lower temperature for consistency
+            )
+
+            result = await ollama_service.extract_json(response)
+            tags = result.get("tags", [])
+
+            # Validate and filter
+            valid_tags = []
+            for tag_obj in tags:
+                if all(k in tag_obj for k in ["tag", "type", "confidence"]):
+                    # Ensure confidence is float
+                    tag_obj["confidence"] = float(tag_obj["confidence"])
+                    valid_tags.append(tag_obj)
+
+            return valid_tags
+
+        except Exception as e:
+            print(f"Tagging error: {e}")
+            # Fallback to basic keyword matching
+            return self._fallback_tagging(question_text)
 
     async def generate_metadata(self, question_text: str) -> Dict:
         """
-        Generate metadata (difficulty, cognitive level) using LLM.
+        Generate comprehensive metadata using Ollama LLM.
+
+        Returns:
+            {
+                "cognitive_level": str,
+                "difficulty_estimation": float (0.0-1.0),
+                "estimated_time_minutes": int,
+                "subject_area": str,
+                "curriculum_path": str (e.g., "Math.Algebra.Quadratics")
+            }
         """
-        return {
-            "cognitive_level": "Apply",
-            "difficulty_estimation": 0.45
-        }
+        prompt = f"""Analyze this educational question and provide metadata.
+
+Question:
+{question_text}
+
+Return JSON with exact fields:
+{{
+    "cognitive_level": "one of: Remember|Understand|Apply|Analyze|Evaluate|Create",
+    "difficulty_estimation": 0.0-1.0 (0.0=easiest, 1.0=hardest),
+    "estimated_time_minutes": integer (realistic time to solve),
+    "subject_area": "Math|Science|English|Social Studies|etc",
+    "curriculum_path": "Subject.Topic.Subtopic (e.g., Math.Algebra.Quadratics)",
+    "requires_calculator": true/false,
+    "language": "Korean|English|Mixed"
+}}"""
+
+        try:
+            response = await ollama_service.generate_text(
+                prompt=prompt,
+                format="json",
+                temperature=0.2
+            )
+
+            metadata = await ollama_service.extract_json(response)
+
+            # Set defaults for missing fields
+            metadata.setdefault("cognitive_level", "Apply")
+            metadata.setdefault("difficulty_estimation", 0.5)
+            metadata.setdefault("estimated_time_minutes", 5)
+            metadata.setdefault("subject_area", "General")
+            metadata.setdefault("curriculum_path", "General.Unknown")
+            metadata.setdefault("requires_calculator", False)
+            metadata.setdefault("language", "Korean")
+
+            return metadata
+
+        except Exception as e:
+            print(f"Metadata generation error: {e}")
+            return {
+                "cognitive_level": "Apply",
+                "difficulty_estimation": 0.5,
+                "estimated_time_minutes": 5,
+                "subject_area": "General",
+                "curriculum_path": "General.Unknown",
+                "requires_calculator": False,
+                "language": "Korean"
+            }
+
+    async def suggest_curriculum_path(self, question_text: str) -> str:
+        """
+        Suggest ltree curriculum path for the question.
+
+        Returns: String like "Math.Algebra.Quadratics.Factoring"
+        """
+        prompt = f"""Given this question, suggest the most specific curriculum path in dot notation.
+
+Question: {question_text}
+
+Example paths:
+- Math.Algebra.Linear_Equations
+- Math.Geometry.Triangles.Pythagorean_Theorem
+- Science.Physics.Mechanics.Kinematics
+- Math.Calculus.Derivatives.Chain_Rule
+
+Return ONLY the path string, no explanation."""
+
+        try:
+            path = await ollama_service.generate_text(
+                prompt=prompt,
+                temperature=0.1
+            )
+            # Clean up the response
+            path = path.strip().strip('"\'').split('\n')[0]
+            return path if '.' in path else "General.Unknown"
+        except:
+            return "General.Unknown"
+
+    def _fallback_tagging(self, question_text: str) -> List[Dict]:
+        """
+        Simple keyword-based fallback when AI fails.
+        """
+        tags = []
+        text_lower = question_text.lower()
+
+        # Math detection
+        if any(word in text_lower for word in ["방정식", "equation", "x =", "solve"]):
+            tags.append({"tag": "Mathematics", "type": "subject", "confidence": 0.8})
+            tags.append({"tag": "Algebra", "type": "concept", "confidence": 0.7})
+
+        # Geometry
+        if any(word in text_lower for word in ["삼각형", "triangle", "원", "circle", "각", "angle"]):
+            tags.append({"tag": "Geometry", "type": "concept", "confidence": 0.75})
+
+        # Calculus
+        if any(word in text_lower for word in ["미분", "적분", "derivative", "integral", "limit"]):
+            tags.append({"tag": "Calculus", "type": "concept", "confidence": 0.85})
+
+        # Default cognitive level
+        tags.append({"tag": "Apply", "type": "cognitive_level", "confidence": 0.6})
+
+        return tags if tags else [
+            {"tag": "General", "type": "subject", "confidence": 0.5}
+        ]
+
 
 tagging_service = TaggingService()
+

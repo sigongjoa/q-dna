@@ -1,15 +1,20 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import { Box, Button, TextField, Paper, Typography, FormControl, InputLabel, Select, MenuItem, Grid, Chip, Stack, CircularProgress, Alert, Divider, Accordion, AccordionSummary, AccordionDetails } from '@mui/material';
 import AutoBenchmarkIcon from '@mui/icons-material/AutoAwesome';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import CurriculumTree from '../components/CurriculumTree';
+import { questionService } from '../services/api';
 
-// Types mimicking backend schemas
+// Types mimicking backend schemas (keep interface locally or move to types)
 interface ExamSourceInfo { name: string; year: number; grade: number; number: number; }
 interface MathDomainInfo { major_domain: string; advanced_topic: string; }
 
 export default function QuestionEditor() {
+    const { id } = useParams(); // Get ID from URL
+    const navigate = useNavigate();
+
     const [questionType, setQuestionType] = useState('mcq');
     const [content, setContent] = useState('');
     const [selectedCurriculumIds, setSelectedCurriculumIds] = useState<number[]>([]);
@@ -27,49 +32,105 @@ export default function QuestionEditor() {
     // Twin Generation State
     const [isTwinGenerating, setIsTwinGenerating] = useState(false);
     const [twinResult, setTwinResult] = useState<string | null>(null);
+    const [currentQuestionId, setCurrentQuestionId] = useState<string | null>(null);
 
-    const handleAiAnalyze = () => {
+    // Load Data if ID exists
+    useEffect(() => {
+        if (id) {
+            loadQuestion(id);
+        }
+    }, [id]);
+
+    const loadQuestion = async (qId: string) => {
+        try {
+            const data = await questionService.getById(qId);
+            console.log("Loaded Question:", data);
+
+            setCurrentQuestionId(data.question_id);
+            setContent(data.content_stem);
+            setQuestionType(data.question_type);
+
+            if (data.content_metadata) {
+                const meta = data.content_metadata;
+                if (meta.source) setExamSource(meta.source);
+                if (meta.domain) setMathDomain(meta.domain);
+                if (meta.difficulty) setDifficulty(meta.difficulty.estimated_level || 3);
+            }
+        } catch (error) {
+            console.error("Failed to load question:", error);
+            alert("Failed to load question data.");
+        }
+    };
+
+    const handleAiAnalyze = async () => {
+        if (!content) return;
         setIsAiProcessing(true);
-        // Simulate API Call to /api/v1/questions/analyze
-        setTimeout(() => {
+        try {
+            const metadata = await questionService.analyze(content);
+            console.log("AI Analysis Result:", metadata);
+
+            // Auto-fill form
+            if (metadata.source) setExamSource(prev => ({ ...prev, ...metadata.source }));
+            if (metadata.domain) setMathDomain(metadata.domain);
+            if (metadata.difficulty) {
+                setDifficulty(metadata.difficulty.estimated_level || 3);
+                // Map skills to tags for display
+                if (metadata.difficulty.required_skills) {
+                    setAiTags(metadata.difficulty.required_skills.map((skill: string) => ({
+                        name: skill, type: 'Skill', confidence: 0.9
+                    })));
+                }
+            }
+            setAiFeedback(`Analyzed as ${metadata.domain?.major_domain} / ${metadata.domain?.advanced_topic}.`);
+        } catch (error) {
+            console.error("AI Analysis Failed:", error);
+            setAiFeedback("Failed to analyze question. Is Ollama running?");
+        } finally {
             setIsAiProcessing(false);
-            setAiTags([
-                { name: 'Linear Equations', type: 'Concept', confidence: 0.98 },
-                { name: 'KMC-Style', type: 'ExamType', confidence: 0.95 },
-                { name: 'Critical Thinking', type: 'Skill', confidence: 0.85 },
-            ]);
-            // Auto-fill metadata based on analysis
-            setExamSource(prev => ({ ...prev, name: 'KMC', grade: 5 }));
-            setMathDomain({ major_domain: 'Geometry', advanced_topic: 'Congruence' });
-            setDifficulty(4);
-            setAiFeedback("Identified as a KMC-style geometry problem requiring auxiliary line construction.");
-        }, 1500);
+        }
     };
 
-    const handleGenerateTwin = () => {
+    const handleGenerateTwin = async () => {
+        if (!currentQuestionId) {
+            alert("Please save the question first to generate a twin.");
+            return;
+        }
         setIsTwinGenerating(true);
-        // Simulate API Call to /api/v1/questions/{id}/twin
-        setTimeout(() => {
+        try {
+            const twinQuestion = await questionService.createTwin(currentQuestionId);
+            setTwinResult(twinQuestion.content_stem);
+        } catch (error) {
+            console.error("Twin Gen Failed:", error);
+            alert("Failed to generate twin problem.");
+        } finally {
             setIsTwinGenerating(false);
-            setTwinResult(`[Generated Twin Problem]\nA triangle ABC has AB=AC. Point D is on BC such that...\n(Structurally identical to original but with different values)`);
-        }, 2000);
+        }
     };
 
-    const handleSave = () => {
+    const handleSave = async () => {
         const payload = {
-            questionType,
-            content,
-            curriculum: selectedCurriculumIds,
-            tags: aiTags,
-            metadata: {
+            question_type: questionType,
+            content_stem: content,
+            content_metadata: {
                 source: examSource,
                 domain: mathDomain,
-                difficulty: difficulty,
+                difficulty: { estimated_level: difficulty },
                 ai_feedback: aiFeedback
-            }
+            },
+            answer_key: { "answer": "" }, // TODO: Answer input
+            create_by: "00000000-0000-0000-0000-000000000000", // UUID placeholder (Auth not fully ready)
+            status: "published"
         };
-        console.log("Saving Advanced Math Question...", payload);
-        alert("Question Saved! (Check Console)");
+
+        try {
+            const savedQ = await questionService.create(payload);
+            console.log("Saved Question:", savedQ);
+            setCurrentQuestionId(savedQ.question_id); // Enable Twin Gen
+            alert("Question Saved! Now you can generate a twin.");
+        } catch (error) {
+            console.error("Save Failed:", error);
+            alert("Failed to save question.");
+        }
     };
 
     return (

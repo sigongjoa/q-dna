@@ -51,6 +51,7 @@ class QuestionUpdate(QuestionBase):
 class QuestionInDBBase(QuestionBase):
     question_id: UUID
     version: int
+    created_by: UUID # Added field
     created_at: datetime
     updated_at: datetime
     

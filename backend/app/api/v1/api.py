@@ -1,3 +1,4 @@
+from fastapi import APIRouter
 from app.api.v1.endpoints import questions, curriculum, tags, analytics
 
 api_router = APIRouter()

@@ -1,5 +1,5 @@
 from typing import Any, List
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Body
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from app.api import deps
@@ -20,7 +20,7 @@ async def create_question(
     db_obj = QuestionModel(
         question_type=question_in.question_type,
         content_stem=question_in.content_stem,
-        content_metadata=question_in.content_metadata,
+        content_metadata=question_in.content_metadata.model_dump(),
         answer_key=question_in.answer_key,
         difficulty_index=question_in.difficulty_index,
         created_by=question_in.create_by,  # In real app, get from current_user
@@ -29,6 +29,7 @@ async def create_question(
     db.add(db_obj)
     await db.commit()
     await db.refresh(db_obj)
+    print(f"DEBUG: Created Question {db_obj.question_id}")
     return db_obj
 
 @router.get("/", response_model=List[Question])
@@ -44,10 +45,33 @@ async def read_questions(
     questions = result.scalars().all()
     return questions
 
+@router.get("/{question_id}", response_model=Question)
+async def read_question(
+    *,
+    db: AsyncSession = Depends(deps.get_db),
+    question_id: str,
+) -> Any:
+    """
+    Get question by ID.
+    """
+    import uuid
+    try:
+        # Check if analyze or other paths are caught (though method diff saves us)
+        # Better safe than sorry if we add GET /something later
+        uuid_obj = uuid.UUID(question_id)
+    except ValueError:
+         raise HTTPException(status_code=400, detail="Invalid UUID format")
+         
+    result = await db.execute(select(QuestionModel).where(QuestionModel.question_id == uuid_obj))
+    question = result.scalar_one_or_none()
+    if not question:
+        raise HTTPException(status_code=404, detail="Question not found")
+    return question
+
 @router.post("/analyze", response_model=Any)
 async def analyze_question_content(
     *,
-    content_stem: str,
+    content_stem: str = Body(..., embed=True),
 ) -> Any:
     """
     [Advanced Math] Analyze question content to extract metadata (Grade, Domain, Difficulty).
@@ -70,6 +94,7 @@ async def generate_twin_question(
     import uuid
     
     # 1. Fetch Original Question
+    print(f"DEBUG: Searching for Question ID {question_id}")
     stmt = select(QuestionModel).where(QuestionModel.question_id == uuid.UUID(question_id))
     result = await db.execute(stmt)
     original_q = result.scalar_one_or_none()
