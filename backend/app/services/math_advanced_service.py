@@ -78,42 +78,41 @@ class MathAdvancedService:
         original_text = original_question.content_stem
         
         prompt = f"""
-        You are a professional Math Item Writer. Your task is to create a "Twin Problem" (Isomorphic Problem).
-        
-        Rules:
-        1. Keep the EXACT SAME mathematical logic and solving steps as the original.
-        2. Change the objects, context, and numbers.
-        3. Ensure the difficulty remains identical.
-        4. The output must involve Korean context if the original is Korean.
-        
-        Original Problem (Context: {meta.domain.major_domain if meta.domain else 'General'}):
+        You are an expert Math Item Writer for Elementary Advanced Math (Olympiad level).
+        Your task is to create a "Twin Problem" (Isomorphic Problem) based on the original problem.
+
+        **Rules (Strict):**
+        1. **Logic**: Keep the EXACT SAME mathematical logic, formula, and solving steps.
+        2. **Variation**: Change the story context (objects, names) and numbers.
+        3. **Language**: Output must be in **Natural Korean (한국어)**.
+        4. **Format**: Respond ONLY in JSON format.
+
+        Original Problem:
         {original_text}
-        
-        Output format:
-        [Question]
-        (Write the new question stem here)
-        
-        [Answer]
-        (Write the conceptual answer or key number)
+
+        Target JSON Structure:
+        {{
+            "question_stem": "The new problem text...",
+            "answer": "The final answer (e.g. '15개')",
+            "solution_steps": "Step-by-step explanation of the solution"
+        }}
         """
         
         try:
+            # Use JSON mode for structure reliability
             response = await self.client.chat(model=self.model, messages=[
-                {'role': 'system', 'content': 'You generate high-quality math problems.'},
+                {'role': 'system', 'content': 'You are a professional math content generator. Output valid JSON.'},
                 {'role': 'user', 'content': prompt}
-            ])
+            ], format='json')
             
             generated_text = response['message']['content']
+            data = json.loads(generated_text)
             
-            # Simple parsing of the output
-            new_stem = generated_text
-            new_answer_key = {"answer": "See solution"}
-            
-            if "[Question]" in generated_text:
-                parts = generated_text.split("[Answer]")
-                new_stem = parts[0].replace("[Question]", "").strip()
-                if len(parts) > 1:
-                    new_answer_key = {"answer": parts[1].strip()}
+            new_stem = data.get("question_stem", "")
+            new_answer_key = {
+                "answer": data.get("answer", "See solution"),
+                "explanation": data.get("solution_steps", "")
+            }
 
             return QuestionCreate(
                 question_type=original_question.question_type,
