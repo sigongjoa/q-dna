@@ -4,15 +4,16 @@ import { Box, Button, TextField, Paper, Typography, FormControl, InputLabel, Sel
 import AutoBenchmarkIcon from '@mui/icons-material/AutoAwesome';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
+import BrushIcon from '@mui/icons-material/Brush';
 import CurriculumTree from '../components/CurriculumTree';
-import { questionService } from '../services/api';
+import { questionService, diagramService } from '../services/api';
 
-// Types mimicking backend schemas (keep interface locally or move to types)
+// Types mimicking backend schemas
 interface ExamSourceInfo { name: string; year: number; grade: number; number: number; }
 interface MathDomainInfo { major_domain: string; advanced_topic: string; }
 
 export default function QuestionEditor() {
-    const { id } = useParams(); // Get ID from URL
+    const { id } = useParams();
     const navigate = useNavigate();
 
     const [questionType, setQuestionType] = useState('mcq');
@@ -34,6 +35,10 @@ export default function QuestionEditor() {
     const [twinResult, setTwinResult] = useState<string | null>(null);
     const [currentQuestionId, setCurrentQuestionId] = useState<string | null>(null);
 
+    // Diagram Generation State
+    const [isDiagramGenerating, setIsDiagramGenerating] = useState(false);
+    const [diagramUrl, setDiagramUrl] = useState<string | null>(null);
+
     // Load Data if ID exists
     useEffect(() => {
         if (id) {
@@ -44,8 +49,6 @@ export default function QuestionEditor() {
     const loadQuestion = async (qId: string) => {
         try {
             const data = await questionService.getById(qId);
-            console.log("Loaded Question:", data);
-
             setCurrentQuestionId(data.question_id);
             setContent(data.content_stem);
             setQuestionType(data.question_type);
@@ -67,14 +70,10 @@ export default function QuestionEditor() {
         setIsAiProcessing(true);
         try {
             const metadata = await questionService.analyze(content);
-            console.log("AI Analysis Result:", metadata);
-
-            // Auto-fill form
             if (metadata.source) setExamSource(prev => ({ ...prev, ...metadata.source }));
             if (metadata.domain) setMathDomain(metadata.domain);
             if (metadata.difficulty) {
                 setDifficulty(metadata.difficulty.estimated_level || 3);
-                // Map skills to tags for display
                 if (metadata.difficulty.required_skills) {
                     setAiTags(metadata.difficulty.required_skills.map((skill: string) => ({
                         name: skill, type: 'Skill', confidence: 0.9
@@ -107,6 +106,21 @@ export default function QuestionEditor() {
         }
     };
 
+    const handleGenerateDiagram = async () => {
+        if (!content) return;
+        setIsDiagramGenerating(true);
+        try {
+            const result = await diagramService.generate(content);
+            const fullUrl = `http://localhost:8000${result.image_url}`;
+            setDiagramUrl(fullUrl);
+        } catch (error) {
+            console.error("Diagram Gen Failed:", error);
+            alert("Failed to generate diagram.");
+        } finally {
+            setIsDiagramGenerating(false);
+        }
+    };
+
     const handleSave = async () => {
         const payload = {
             question_type: questionType,
@@ -117,15 +131,14 @@ export default function QuestionEditor() {
                 difficulty: { estimated_level: difficulty },
                 ai_feedback: aiFeedback
             },
-            answer_key: { "answer": "" }, // TODO: Answer input
-            create_by: "00000000-0000-0000-0000-000000000000", // UUID placeholder (Auth not fully ready)
+            answer_key: { "answer": "" },
+            create_by: "00000000-0000-0000-0000-000000000000",
             status: "published"
         };
 
         try {
             const savedQ = await questionService.create(payload);
-            console.log("Saved Question:", savedQ);
-            setCurrentQuestionId(savedQ.question_id); // Enable Twin Gen
+            setCurrentQuestionId(savedQ.question_id);
             alert("Question Saved! Now you can generate a twin.");
         } catch (error) {
             console.error("Save Failed:", error);
@@ -139,7 +152,23 @@ export default function QuestionEditor() {
                 <Typography variant="h5">
                     Question Editor (Advanced Math)
                 </Typography>
-                <Stack direction="row" spacing={2}>
+                <Stack direction="row" spacing={2} alignItems="center">
+                    <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+                        <Button
+                            variant="outlined"
+                            color="primary"
+                            startIcon={isDiagramGenerating ? <CircularProgress size={20} /> : <BrushIcon />}
+                            onClick={handleGenerateDiagram}
+                            disabled={isDiagramGenerating || !content}
+                        >
+                            {isDiagramGenerating ? "AI Drawing..." : "Draw Diagram"}
+                        </Button>
+                        {isDiagramGenerating && (
+                            <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5 }}>
+                                Generating... (approx 5-10s)
+                            </Typography>
+                        )}
+                    </Box>
                     <Button
                         variant="outlined"
                         color="success"
@@ -162,7 +191,6 @@ export default function QuestionEditor() {
             </Box>
 
             <Grid container spacing={4}>
-                {/* Left Column: Content */}
                 <Grid item xs={12} md={7}>
                     <Stack spacing={3}>
                         <FormControl fullWidth>
@@ -181,12 +209,20 @@ export default function QuestionEditor() {
                         <TextField
                             label="Question Stem (Markdown/LaTeX)"
                             multiline
-                            rows={12}
+                            rows={8}
                             fullWidth
                             value={content}
                             onChange={(e) => setContent(e.target.value)}
                             placeholder="Type problem here..."
                         />
+
+                        {/* Diagram Preview Area */}
+                        {diagramUrl && (
+                            <Paper variant="outlined" sx={{ p: 2, textAlign: 'center', bgcolor: '#fafafa' }}>
+                                <Typography variant="caption" display="block" color="text.secondary" gutterBottom>Generated Diagram</Typography>
+                                <img src={diagramUrl} alt="Generated Geometry" style={{ maxWidth: '100%', maxHeight: 300 }} />
+                            </Paper>
+                        )}
 
                         {aiFeedback && (
                             <Alert severity="info" onClose={() => setAiFeedback(null)}>
@@ -208,8 +244,8 @@ export default function QuestionEditor() {
                     </Stack>
                 </Grid>
 
-                {/* Right Column: Metadata & Curriculum */}
                 <Grid item xs={12} md={5}>
+                    {/* Metadata Panel (Simplified for brevity) */}
                     <Accordion defaultExpanded sx={{ mb: 2 }}>
                         <AccordionSummary expandIcon={<ExpandMoreIcon />}>
                             <Typography variant="subtitle1">Advanced Metadata</Typography>
@@ -221,7 +257,6 @@ export default function QuestionEditor() {
                                     size="small"
                                     value={examSource.name}
                                     onChange={(e) => setExamSource({ ...examSource, name: e.target.value })}
-                                    placeholder="e.g. KMC, HME"
                                 />
                                 <Stack direction="row" spacing={2}>
                                     <TextField

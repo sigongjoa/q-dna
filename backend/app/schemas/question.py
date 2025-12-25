@@ -38,7 +38,7 @@ class QuestionBase(BaseModel):
 
 # Properties to receive on Question creation
 class QuestionCreate(QuestionBase):
-    create_by: UUID
+    create_by: Optional[UUID] = None
 
 # Properties to receive on Question update
 class QuestionUpdate(QuestionBase):
@@ -51,7 +51,7 @@ class QuestionUpdate(QuestionBase):
 class QuestionInDBBase(QuestionBase):
     question_id: UUID
     version: int
-    created_by: UUID # Added field
+    created_by: Optional[UUID] = None # Added field, Nullable
     created_at: datetime
     updated_at: datetime
     

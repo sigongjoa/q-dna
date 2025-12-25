@@ -67,4 +67,11 @@ export const questionService = {
     }
 };
 
+export const diagramService = {
+    async generate(description: string): Promise<{ image_url: string }> {
+        const response = await api.post('/diagrams/generate', { description });
+        return response.data;
+    }
+};
+
 export default api;
