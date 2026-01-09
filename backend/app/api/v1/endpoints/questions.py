@@ -1,5 +1,5 @@
 from typing import Any, List
-from fastapi import APIRouter, Depends, HTTPException, Body
+from fastapi import APIRouter, Depends, HTTPException, Body, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from app.api import deps
@@ -133,3 +133,90 @@ async def generate_twin_question(
     await db.refresh(db_obj)
     
     return db_obj
+
+@router.post("/{question_id}/erroneous-solution")
+async def generate_error_worksheet(
+    *,
+    db: AsyncSession = Depends(deps.get_db),
+    question_id: str,
+    error_types: List[str] = Query(default=None),
+    output_format: str = Query(default="pdf")
+):
+    """
+    오답 풀이 워크시트 생성 (프린트용)
+    """
+    import uuid
+    from app.services.error_solution_service import error_solution_service
+    from app.services.report_service import report_service
+
+    # 1. 문제 조회
+    try:
+        uuid_obj = uuid.UUID(question_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid UUID format")
+
+    stmt = select(QuestionModel).where(QuestionModel.question_id == uuid_obj)
+    result = await db.execute(stmt)
+    question = result.scalar_one_or_none()
+
+    if not question:
+        raise HTTPException(status_code=404, detail="Question not found")
+
+    # 2. 오류 유형 파싱
+    from app.schemas.error_solution import ErrorType
+    selected_errors = None
+    if error_types:
+        try:
+            selected_errors = [ErrorType(et) for et in error_types]
+        except ValueError:
+            # Ignore invalid types or raise error? Let's ignore or just pass strings 
+            # if we wanted strict we would ensure frontend sends valid ones.
+            # But converting to Enum helps service validation.
+            pass
+
+    # 3. LLM으로 오답/정답 풀이 생성
+    # Handling potential missing answer key
+    correct_ans = question.answer_key.get("answer", "") if question.answer_key else ""
+    
+    erroneous_data = await error_solution_service.generate_erroneous_solution(
+        question_content=question.content_stem,
+        correct_answer=correct_ans,
+        error_types=selected_errors
+    )
+
+    correct_data = await error_solution_service.generate_correct_solution(
+        question_content=question.content_stem,
+        correct_answer=correct_ans
+    )
+
+    # 4. PDF 생성
+    if output_format == "pdf":
+        template_data = {
+            "question_content": question.content_stem,
+            "erroneous_steps": erroneous_data["steps"],
+            "correct_steps": correct_data["steps"],
+            "wrong_answer": erroneous_data.get("final_wrong_answer", ""),
+            "correct_answer": correct_ans
+        }
+
+        # filename setting
+        filename = f"error_worksheet_{question_id}.pdf"
+        
+        try:
+            pdf_bytes = report_service.generate_error_worksheet(template_data)
+        except Exception as e:
+            print(f"PDF Generation Error: {e}")
+            raise HTTPException(status_code=500, detail="PDF Generation Failed. Ensure WeasyPrint/GTK is installed.")
+
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+    else:
+        # JSON 응답
+        return {
+            "erroneous_solution": erroneous_data,
+            "correct_solution": correct_data
+        }
+

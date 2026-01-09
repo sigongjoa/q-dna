@@ -22,11 +22,14 @@ async def lifespan(app: FastAPI):
     else:
         print("⚠️  Warning: Ollama service not accessible. AI features will fail.")
 
-    async with engine.begin() as conn:
-        # For development only: Create tables automatically
-        # In production, use Alembic migrations
-        await conn.run_sync(Base.metadata.create_all)
-    print("✅ Database connected")
+    try:
+        async with engine.begin() as conn:
+            # For development only: Create tables automatically
+            # In production, use Alembic migrations
+            await conn.run_sync(Base.metadata.create_all)
+        print("✅ Database connected")
+    except Exception as e:
+        print(f"⚠️  Warning: Database connection failed: {e}. Running in simulation mode.")
 
     yield
 

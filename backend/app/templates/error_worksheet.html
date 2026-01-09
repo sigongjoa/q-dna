@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <meta charset="UTF-8">
+    <style>
+        @page {
+            size: A4;
+            margin: 2cm;
+        }
+
+        body {
+            font-family: "NanumGothic", "Malgun Gothic", sans-serif;
+            line-height: 1.6;
+        }
+
+        h1 {
+            font-size: 24px;
+            border-bottom: 2px solid #333;
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+        }
+
+        h2 {
+            font-size: 18px;
+            margin-top: 30px;
+            color: #444;
+            background-color: #f5f5f5;
+            padding: 5px 10px;
+            border-radius: 5px;
+        }
+
+        h3 {
+            font-size: 16px;
+            margin-top: 20px;
+            color: #555;
+        }
+
+        .error-step {
+            border-left: 3px solid #ff5722;
+            padding-left: 10px;
+            background: #fff3e0;
+        }
+
+        .step {
+            margin: 15px 0;
+            padding: 5px;
+        }
+
+        .answer-section {
+            page-break-before: always;
+        }
+
+        code {
+            background: #eee;
+            padding: 2px 4px;
+            border-radius: 4px;
+            font-family: "Courier New", monospace;
+        }
+
+        .question-box {
+            border: 1px solid #ddd;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 30px;
+        }
+
+        .question-box li {
+            margin-bottom: 15px;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>🔍 오류 찾기 학습지</h1>
+    <p><strong>학생 이름:</strong> ____________ <strong>날짜:</strong> ______</p>
+
+    <section class="question">
+        <h2>문제</h2>
+        <p>{{ question_content }}</p>
+    </section>
+
+    <section class="erroneous-solution">
+        <h2>다음 풀이에서 잘못된 부분을 찾아 ✗ 표시하세요</h2>
+        {% for step in erroneous_steps %}
+        <div class="step {% if step.is_error %}error-step{% endif %}">
+            <strong>[{{ step.step }}단계]</strong> {{ step.content }}<br>
+            {% if step.formula %}
+            <br><code>{{ step.formula }}</code>
+            {% endif %}
+        </div>
+        {% endfor %}
+        <p><strong>위 풀이의 답:</strong> {{ wrong_answer }}</p>
+    </section>
+
+    <section class="question-box">
+        <h3>❓ 질문</h3>
+        <ol>
+            <li>몇 번째 단계가 틀렸나요? <u>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</u>단계</li>
+            <li>왜 틀렸나요? _____________________________________</li>
+            <li>올바른 답은 무엇인가요? _____________________</li>
+        </ol>
+    </section>
+
+    <!-- 정답 해설 (별도 페이지) -->
+    <section class="answer-section">
+        <h1>✅ 정답 및 해설 (선생님용)</h1>
+        <p><strong>틀린 단계:</strong>
+            {% for step in erroneous_steps %}
+            {% if step.is_error %}{{ step.step }}단계{% endif %}
+            {% endfor %}
+        </p>
+
+        <p><strong>오류 설명:</strong><br>
+            {% for step in erroneous_steps %}
+            {% if step.is_error %}{{ step.error_explanation }}{% endif %}
+            {% endfor %}
+        </p>
+
+        <h2>올바른 풀이</h2>
+        {% for step in correct_steps %}
+        <div class="step">
+            <strong>[{{ step.step }}단계]</strong> {{ step.content }}<br>
+            {% if step.formula %}
+            <br><code>{{ step.formula }}</code>
+            {% endif %}
+        </div>
+        {% endfor %}
+        <p><strong>정답:</strong> {{ correct_answer }}</p>
+    </section>
+</body>
+
+</html>

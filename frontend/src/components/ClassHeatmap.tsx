@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+
 import { Paper, Typography, Box } from '@mui/material';
 import { ResponsiveHeatMap } from '@nivo/heatmap';
 import simulationData from '../data/simulation_results.json';
@@ -63,7 +63,6 @@ export default function ClassHeatmap() {
                         }
                     ]}
                     hoverTarget="cell"
-                    cellHoverOthersOpacity={0.25}
                 />
             </Box>
         </Paper>

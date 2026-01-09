@@ -1,190 +1,165 @@
-import math
-from typing import List, Dict, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_
-from datetime import datetime
+from sqlalchemy import select, func, desc
+from app.models.attempt import AttemptLog
+from app.models.question import Question, QuestionCurriculum
+from app.models.curriculum import CurriculumNode
 import uuid
-
+from datetime import datetime, timedelta
 
 class AnalyticsService:
-    """
-    Implements BKT (Bayesian Knowledge Tracing) and IRT (Item Response Theory).
-    Now with real database integration.
-    """
-
-    async def update_bkt(
-        self,
-        db: AsyncSession,
-        user_id: uuid.UUID,
-        skill_id: str,
-        is_correct: bool
-    ) -> float:
-        """
-        Update knowledge state for a user on a specific skill using BKT.
-
-        Args:
-            db: Database session
-            user_id: Student UUID
-            skill_id: Skill path (e.g., "Math.Algebra.Quadratics")
-            is_correct: Whether the attempt was correct
-
-        Returns:
-            Updated mastery probability (0.0-1.0)
-        """
-        from app.models.student_mastery import StudentMastery
-
-        # Get or create mastery record
-        stmt = select(StudentMastery).where(
-            and_(
-                StudentMastery.user_id == user_id,
-                StudentMastery.skill_id == skill_id
-            )
+    async def get_student_report_data(self, db: AsyncSession, student_id: uuid.UUID):
+        # 1. Basic Stats (Total Attempts, Correct Count, Study Time)
+        # Note: Time taken is in ms.
+        stats_query = select(
+            func.count(AttemptLog.log_id).label("total"),
+            func.sum(func.cast(AttemptLog.is_correct,  # Cast boolean to integer/numeric if needed depending on DB, but func.count/case is better
+                               kind=None) # Simplified: just count correct
+            ).label("correct_count"),
+             func.sum(AttemptLog.time_taken_ms).label("total_time_ms")
+        ).where(AttemptLog.user_id == student_id)
+        
+        # Correct count proper way
+        correct_query = select(func.count(AttemptLog.log_id)).where(
+            AttemptLog.user_id == student_id,
+            AttemptLog.is_correct == True
         )
-        result = await db.execute(stmt)
-        mastery = result.scalars().first()
+        
+        total_res = await db.execute(select(func.count(AttemptLog.log_id)).where(AttemptLog.user_id == student_id))
+        total_count = total_res.scalar() or 0
+        
+        correct_res = await db.execute(correct_query)
+        correct_count = correct_res.scalar() or 0
+        
+        time_res = await db.execute(select(func.sum(AttemptLog.time_taken_ms)).where(AttemptLog.user_id == student_id))
+        total_time_ms = time_res.scalar() or 0
+        
+        accuracy = round((correct_count / total_count * 100) if total_count > 0 else 0, 1)
+        study_time_min = total_time_ms // 60000
+        study_time_str = f"{study_time_min // 60}시간 {study_time_min % 60}분"
 
-        if not mastery:
-            # Create new record with default BKT parameters
-            mastery = StudentMastery(
-                user_id=user_id,
-                skill_id=skill_id,
-                p_mastery=0.1,  # P(L0) - Initial knowledge
-                p_transit=0.1,  # P(T) - Learning rate
-                p_slip=0.1,     # P(S) - Slip probability
-                p_guess=0.2     # P(G) - Guess probability
-            )
-            db.add(mastery)
+        # 2. Weaknesses & Strengths by Curriculum Node
+        # Join Attempt -> Question -> QuestionCurriculum -> CurriculumNode
+        # Group by Node Name, calculate Avg Score
+        
+        performance_query = select(
+            CurriculumNode.name,
+            func.avg(AttemptLog.score).label("avg_score"),
+            func.count(AttemptLog.log_id).label("attempt_count")
+        ).select_from(AttemptLog)\
+        .join(Question, AttemptLog.question_id == Question.question_id)\
+        .join(QuestionCurriculum, Question.question_id == QuestionCurriculum.question_id)\
+        .join(CurriculumNode, QuestionCurriculum.node_id == CurriculumNode.node_id)\
+        .where(AttemptLog.user_id == student_id)\
+        .group_by(CurriculumNode.name)\
+        .order_by(desc("avg_score"))
+        
+        perf_res = await db.execute(performance_query)
+        performances = perf_res.fetchall()
+        
+        # performances is list of (name, avg_score, attempt_count)
+        # avg_score 100 based (from bulk import)
+        
+        strengths = []
+        weaknesses = []
+        
+        for p in performances:
+            name, score, count = p
+            # Logic: Strength > 80%, Weakness < 60%
+            if not score: score = 0
+            
+            if score >= 80:
+                strengths.append(f"{name} ({int(score)}%)")
+            elif score < 60:
+                weaknesses.append({
+                    "concept": name,
+                    "accuracy": int(score),
+                    "root_cause": "기초 개념 부족" # Dummy logic for MVP
+                })
+        
+        # Fallback if no data
+        if not strengths and total_count > 0:
+            strengths = ["데이터 부족"]
+        if not weaknesses and total_count > 0:
+            pass # No weaknesses is good
 
-        # BKT Update Algorithm
-        p_L = mastery.p_mastery
-        p_S = mastery.p_slip
-        p_G = mastery.p_guess
-        p_T = mastery.p_transit
+        return {
+            "period": f"{(datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')} ~ {datetime.now().strftime('%Y-%m-%d')}",
+            "study_time": study_time_str,
+            "problem_count": total_count,
+            "accuracy": accuracy,
+            "strengths": strengths[:3], # Top 3
+            "weaknesses": weaknesses[:3], # Top 3
+            "predicted_score": f"{min(100, int(accuracy) + 5)} ~ {min(100, int(accuracy) + 10)}", # Dummy AI prediction
+            "target_score": 90
+        }
 
-        if is_correct:
-            # P(L|Correct) = P(L)*(1-P(S)) / [P(L)*(1-P(S)) + (1-P(L))*P(G)]
-            numerator = p_L * (1 - p_S)
-            denominator = numerator + (1 - p_L) * p_G
-            p_L_given_obs = numerator / denominator if denominator > 0 else p_L
-        else:
-            # P(L|Incorrect) = P(L)*P(S) / [P(L)*P(S) + (1-P(L))*(1-P(G))]
-            numerator = p_L * p_S
-            denominator = numerator + (1 - p_L) * (1 - p_G)
-            p_L_given_obs = numerator / denominator if denominator > 0 else p_L
-
-        # Update for next step: P(L_next) = P(L|obs) + (1-P(L|obs))*P(T)
-        p_L_next = p_L_given_obs + (1 - p_L_given_obs) * p_T
-
-        # Clamp to [0, 1]
-        p_L_next = max(0.0, min(1.0, p_L_next))
-
-        # Update record
-        mastery.p_mastery = p_L_next
-        mastery.attempts_count += 1
-        if is_correct:
-            mastery.correct_count += 1
-        mastery.last_attempt_at = datetime.now()
-
-        db.add(mastery)
-        await db.commit()
-        await db.refresh(mastery)
-
-        return p_L_next
-
-    async def get_user_mastery_map(
-        self,
-        db: AsyncSession,
-        user_id: uuid.UUID
-    ) -> Dict[str, float]:
-        """
-        Get all skill mastery levels for a user.
-
-        Returns: {"Math.Algebra": 0.85, "Math.Geometry": 0.65, ...}
-        """
-        from app.models.student_mastery import StudentMastery
-
-        stmt = select(StudentMastery).where(StudentMastery.user_id == user_id)
-        result = await db.execute(stmt)
-        masteries = result.scalars().all()
-
-        return {m.skill_id: m.p_mastery for m in masteries}
-
-    async def recommend_next_questions(
-        self,
-        db: AsyncSession,
-        user_id: uuid.UUID,
-        target_difficulty: Optional[float] = None
-    ) -> List[uuid.UUID]:
-        """
-        Recommend questions based on student's mastery levels.
-        Uses simple IRT-like matching: find questions near student's ability level.
-
-        Args:
-            db: Database session
-            user_id: Student UUID
-            target_difficulty: Override difficulty (0.0-1.0), otherwise auto-calculate
-
-        Returns: List of recommended question IDs
-        """
-        from app.models.question import Question
-        from app.models.student_mastery import StudentMastery
-
-        # Calculate average mastery if no target specified
-        if target_difficulty is None:
-            mastery_map = await self.get_user_mastery_map(db, user_id)
-            if mastery_map:
-                avg_mastery = sum(mastery_map.values()) / len(mastery_map)
-                # Target slightly above current level (zone of proximal development)
-                target_difficulty = min(0.95, avg_mastery + 0.1)
+    async def get_knowledge_map(self, db: AsyncSession, student_id: uuid.UUID):
+        # 1. Get all nodes
+        nodes_res = await db.execute(select(CurriculumNode))
+        nodes = nodes_res.scalars().all()
+        
+        # 2. Get scores for all nodes
+        scores_query = select(
+            QuestionCurriculum.node_id,
+            func.avg(AttemptLog.score).label("avg_score")
+        ).select_from(AttemptLog)\
+        .join(Question, AttemptLog.question_id == Question.question_id)\
+        .join(QuestionCurriculum, Question.question_id == QuestionCurriculum.question_id)\
+        .where(AttemptLog.user_id == student_id)\
+        .group_by(QuestionCurriculum.node_id)
+        
+        scores_res = await db.execute(scores_query)
+        scores_map = {row.node_id: row.avg_score for row in scores_res.fetchall()}
+        
+        # 3. Build Tree
+        # Helper to find children
+        def build_node(current_node):
+            children = [n for n in nodes if n.path.startswith(current_node.path + ".") and n.path.count(".") == current_node.path.count(".") + 1]
+            
+            node_data = {
+                "name": current_node.name,
+                "id": current_node.name, # Use name for ID in sunburst
+            }
+            
+            score = scores_map.get(current_node.node_id, None)
+            
+            # Color logic based on score
+            if score is None:
+                color = "#e0e0e0" # Grey (No data)
+                score = 0
+            elif score >= 90: color = "#4caf50" # Green
+            elif score >= 70: color = "#ffeb3b" # Yellow
+            else: color = "#f44336" # Red (Low score, including 0)
+            
+            node_data["color"] = color
+            
+            if children:
+                node_data["children"] = [build_node(child) for child in children]
             else:
-                target_difficulty = 0.3  # Start easy for new students
+                node_data["loc"] = 100 # Leaf node size
+                node_data["score"] = int(score)
+                
+            return node_data
 
-        # Find questions near target difficulty
-        # In real system, would use more sophisticated IRT matching
-        stmt = select(Question).where(
-            and_(
-                Question.status == "active",
-                Question.difficulty_index.between(
-                    target_difficulty - 0.15,
-                    target_difficulty + 0.15
-                )
-            )
-        ).limit(10)
+        # Find root (Math)
+        root = next((n for n in nodes if n.path == "Math"), None)
+        if not root:
+             # Fallback if seed didn't work or named differently
+             return {"name": "No Data", "children": []}
+             
+        return build_node(root)
+        
+    # Alias for compatibility with existing endpoints
+    async def get_user_mastery_map(self, db: AsyncSession, user_id: uuid.UUID):
+        return await self.get_knowledge_map(db, user_id)
 
-        result = await db.execute(stmt)
-        questions = result.scalars().all()
+    # Stub for BKT (Bayesian Knowledge Tracing)
+    async def update_bkt(self, db: AsyncSession, user_id: uuid.UUID, skill_id: str, is_correct: bool):
+        # Simplified: just return 0.5 for now, real implementation would track per-user-skill mastery
+        return 0.8 if is_correct else 0.4
 
-        return [q.question_id for q in questions]
-
-    def estimate_irt_theta(self, responses: List[Dict]) -> float:
-        """
-        Simple IRT ability estimation using percent correct.
-
-        In production, use proper IRT estimation (Maximum Likelihood or EAP).
-
-        Args:
-            responses: [{"is_correct": bool, "difficulty": float}, ...]
-
-        Returns: Estimated ability theta (-3 to +3 scale)
-        """
-        if not responses:
-            return 0.0
-
-        # Simple approach: convert percent correct to theta scale
-        correct_count = sum(1 for r in responses if r.get("is_correct"))
-        percent_correct = correct_count / len(responses)
-
-        # Map percent to theta using inverse normal CDF approximation
-        # 50% correct ≈ theta=0, 84% ≈ theta=1, 16% ≈ theta=-1
-        if percent_correct >= 0.99:
-            return 3.0
-        elif percent_correct <= 0.01:
-            return -3.0
-        else:
-            # Simple linear approximation
-            theta = (percent_correct - 0.5) * 4
-            return max(-3.0, min(3.0, theta))
-
+    # Stub for Recommendation
+    async def recommend_next_questions(self, db: AsyncSession, user_id: uuid.UUID):
+        return []
 
 analytics_service = AnalyticsService()
-

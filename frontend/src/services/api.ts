@@ -64,12 +64,46 @@ export const questionService = {
     getById: async (id: string) => {
         const response = await api.get(`/questions/${id}`);
         return response.data;
+    },
+    // Generate Error Worksheet (PDF)
+    generateErrorWorksheet: async (
+        questionId: string,
+        errorTypes?: string[]
+    ): Promise<Blob> => {
+        const params = new URLSearchParams();
+        if (errorTypes) {
+            errorTypes.forEach(et => params.append('error_types', et));
+        }
+        params.append('output_format', 'pdf');
+
+        const response = await api.post(
+            `/questions/${questionId}/erroneous-solution?${params.toString()}`,
+            {},
+            { responseType: 'blob' }
+        );
+
+        return response.data; // axios returns data as blob because of responseType
     }
 };
 
 export const diagramService = {
     async generate(description: string): Promise<{ image_url: string }> {
         const response = await api.post('/diagrams/generate', { description });
+        return response.data;
+    }
+};
+
+export const cmsService = {
+    bulkSubmit: async (attempts: any[]) => {
+        const response = await api.post('/cms/bulk-submit', { items: attempts });
+        return response.data;
+    }
+};
+
+export const reportService = {
+    generate: async (studentId: string) => {
+        // Return blob for PDF download
+        const response = await api.post(`/reports/generate/${studentId}`, {}, { responseType: 'blob' });
         return response.data;
     }
 };

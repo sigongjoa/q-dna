@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Weekly Learning Report</title>
+    <style>
+        body {
+            font-family: 'Malgun Gothic', sans-serif;
+            padding: 40px;
+        }
+
+        h1 {
+            color: #333;
+            border-bottom: 2px solid #333;
+            padding-bottom: 10px;
+        }
+
+        .summary-box {
+            background-color: #f5f5f5;
+            padding: 20px;
+            margin-bottom: 20px;
+            border-radius: 8px;
+        }
+
+        .section-title {
+            color: #1976d2;
+            margin-top: 30px;
+            font-weight: bold;
+            border-left: 5px solid #1976d2;
+            padding-left: 10px;
+        }
+
+        .grid {
+            display: flex;
+            gap: 20px;
+        }
+
+        .card {
+            flex: 1;
+            border: 1px solid #ddd;
+            padding: 15px;
+            border-radius: 5px;
+        }
+
+        .weakness {
+            background-color: #fff3e0;
+        }
+
+        .score-box {
+            text-align: center;
+            background-color: #e3f2fd;
+            padding: 30px;
+            border-radius: 10px;
+            margin-top: 20px;
+        }
+
+        .score {
+            font-size: 3em;
+            color: #1976d2;
+            font-weight: bold;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>주간 학습 리포트</h1>
+    <p><strong>학생:</strong> {{ student_name }}</p>
+    <p><strong>기간:</strong> {{ period }}</p>
+
+    <div class="summary-box">
+        <h3>📊 주간 요약</h3>
+        <p><strong>총 학습 시간:</strong> {{ study_time }}</p>
+        <p><strong>풀이 문제 수:</strong> {{ problem_count }}</p>
+        <p><strong>정답률:</strong> {{ accuracy }}%</p>
+    </div>
+
+    <h3 class="section-title">🎯 강점 및 약점 분석</h3>
+    <div class="grid">
+        <div class="card">
+            <h4>주요 강점</h4>
+            <ul>
+                {% for strength in strengths %}
+                <li>{{ strength }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+        <div class="card weakness">
+            <h4>핵심 취약점</h4>
+            <ul>
+                {% for weakness in weaknesses %}
+                <li>{{ weakness.concept }} ({{ weakness.accuracy }}%)
+                    <ul>
+                        <li>원인: {{ weakness.root_cause }}</li>
+                    </ul>
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+    </div>
+
+    <h3 class="section-title">📈 AI 점수 예측</h3>
+    <div class="score-box">
+        <div>현재 학습 추세</div>
+        <div class="score">{{ predicted_score }}</div>
+        <div>목표 점수: {{ target_score }}</div>
+    </div>
+
+    <div style="margin-top: 50px; text-align: center; color: #888;">
+        <p>Q-DNA AI 튜터 시스템 생성</p>
+    </div>
+</body>
+
+</html>

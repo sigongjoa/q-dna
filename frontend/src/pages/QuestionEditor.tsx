@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useParams } from 'react-router-dom';
 import { Box, Button, TextField, Paper, Typography, FormControl, InputLabel, Select, MenuItem, Grid, Chip, Stack, CircularProgress, Alert, Divider, Accordion, AccordionSummary, AccordionDetails } from '@mui/material';
 import AutoBenchmarkIcon from '@mui/icons-material/AutoAwesome';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
+import BugReportIcon from '@mui/icons-material/BugReport';
 import BrushIcon from '@mui/icons-material/Brush';
 import CurriculumTree from '../components/CurriculumTree';
 import { questionService, diagramService } from '../services/api';
@@ -14,7 +15,6 @@ interface MathDomainInfo { major_domain: string; advanced_topic: string; }
 
 export default function QuestionEditor() {
     const { id } = useParams();
-    const navigate = useNavigate();
 
     const [questionType, setQuestionType] = useState('mcq');
     const [content, setContent] = useState('');
@@ -38,6 +38,9 @@ export default function QuestionEditor() {
     // Diagram Generation State
     const [isDiagramGenerating, setIsDiagramGenerating] = useState(false);
     const [diagramUrl, setDiagramUrl] = useState<string | null>(null);
+
+    // Error Clinic State
+    // No specific state needed here, we just navigate
 
     // Load Data if ID exists
     useEffect(() => {
@@ -121,7 +124,16 @@ export default function QuestionEditor() {
         }
     };
 
+    const handleNavigateToClinic = () => {
+        if (!currentQuestionId) return;
+        // Navigate to the Misconception Clinic page
+        window.location.href = `/misconception/${currentQuestionId}`;
+    };
+
+    // Removed toggleErrorType as dialog is gone
+
     const handleSave = async () => {
+        console.log("Curriculum IDs:", selectedCurriculumIds);
         const payload = {
             question_type: questionType,
             content_stem: content,
@@ -180,6 +192,15 @@ export default function QuestionEditor() {
                     </Button>
                     <Button
                         variant="contained"
+                        color="warning"
+                        startIcon={<BugReportIcon />}
+                        onClick={handleNavigateToClinic}
+                        disabled={!currentQuestionId}
+                    >
+                        Misconcep. Clinic
+                    </Button>
+                    <Button
+                        variant="contained"
                         color="secondary"
                         startIcon={isAiProcessing ? <CircularProgress size={20} color="inherit" /> : <AutoBenchmarkIcon />}
                         onClick={handleAiAnalyze}
@@ -191,7 +212,7 @@ export default function QuestionEditor() {
             </Box>
 
             <Grid container spacing={4}>
-                <Grid item xs={12} md={7}>
+                <Grid size={{ xs: 12, md: 7 }}>
                     <Stack spacing={3}>
                         <FormControl fullWidth>
                             <InputLabel>Type</InputLabel>
@@ -244,7 +265,7 @@ export default function QuestionEditor() {
                     </Stack>
                 </Grid>
 
-                <Grid item xs={12} md={5}>
+                <Grid size={{ xs: 12, md: 5 }}>
                     {/* Metadata Panel (Simplified for brevity) */}
                     <Accordion defaultExpanded sx={{ mb: 2 }}>
                         <AccordionSummary expandIcon={<ExpandMoreIcon />}>
@@ -316,7 +337,7 @@ export default function QuestionEditor() {
                     </Box>
                 </Grid>
 
-                <Grid item xs={12}>
+                <Grid size={12}>
                     <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2, pt: 2, borderTop: '1px solid #eee' }}>
                         <Button variant="outlined">Save Draft</Button>
                         <Button variant="contained" onClick={handleSave}>
@@ -325,6 +346,8 @@ export default function QuestionEditor() {
                     </Box>
                 </Grid>
             </Grid>
+
+            {/* Error Dialog Removed */}
         </Paper>
     );
 }

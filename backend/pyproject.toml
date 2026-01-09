@@ -6,6 +6,7 @@ authors = ["Admin <admin@q-dna.com>"]
 
 [tool.poetry.dependencies]
 python = "^3.11"
+mathesis-core = { path = "../../mathesis-common", develop = true }
 fastapi = "^0.109.0"
 uvicorn = {extras = ["standard"], version = "^0.27.0"}
 sqlalchemy = {extras = ["asyncio"], version = "^2.0.25"}

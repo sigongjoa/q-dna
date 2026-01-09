@@ -1,54 +1,60 @@
+"""
+Tagging Service for Node 2 (Q-DNA).
+Refactored to use mathesis_core.analysis.DNAAnalyzer.
+"""
 from typing import List, Dict
-from app.services.ollama_service import ollama_service
+from mathesis_core.analysis import DNAAnalyzer
+from mathesis_core.llm.clients import create_ollama_client
+from mathesis_core.exceptions import AnalysisError
+from app.core.config import settings
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class TaggingService:
     """
-    AI-powered tagging service using Ollama LLM.
-    Analyzes question content and generates relevant tags.
+    AI-powered tagging service using mathesis_core.analysis.DNAAnalyzer.
+
+    This is a thin service layer that:
+    1. Delegates core DNA analysis to DNAAnalyzer (from mathesis_core)
+    2. Handles FastAPI-specific concerns (DB, API)
+    3. Maintains backward compatibility with existing API
     """
+
+    def __init__(self):
+        """Initialize Tagging Service with mathesis_core components."""
+        # Create LLM client using mathesis_core
+        self.llm_client = create_ollama_client(
+            base_url=settings.OLLAMA_URL,
+            model=settings.OLLAMA_MODEL
+        )
+
+        # Use DNAAnalyzer from mathesis_core
+        self.dna_analyzer = DNAAnalyzer(self.llm_client)
 
     async def get_tag_recommendations(self, question_text: str) -> List[Dict]:
         """
-        AI Auto-Tagging logic using Ollama LLM.
+        AI Auto-Tagging logic using DNAAnalyzer.
         Extracts curriculum path, cognitive level, skills, and concepts.
 
-        Returns: List of {"tag": str, "confidence": float, "type": str}
+        This method maintains backward compatibility with the original API.
+        Core logic is delegated to mathesis_core.analysis.DNAAnalyzer.
+
+        Args:
+            question_text: Question content
+
+        Returns:
+            List of {"tag": str, "confidence": float, "type": str}
         """
-        prompt = f"""Analyze this educational question and generate relevant tags.
-
-Question:
-{question_text}
-
-Identify and categorize tags in these types:
-1. subject: Main subject area (Math, Science, English, etc.)
-2. concept: Specific concepts (Algebra, Geometry, Quadratic Equations, etc.)
-3. skill: Required skills (Problem Solving, Critical Thinking, etc.)
-4. cognitive_level: Bloom's taxonomy (Remember, Understand, Apply, Analyze, Evaluate, Create)
-5. difficulty: Difficulty level (Easy, Medium, Hard)
-
-Return JSON array of tags with confidence scores (0.0-1.0):
-{{
-    "tags": [
-        {{"tag": "Mathematics", "type": "subject", "confidence": 0.99}},
-        {{"tag": "Algebra", "type": "concept", "confidence": 0.95}},
-        {{"tag": "Apply", "type": "cognitive_level", "confidence": 0.90}}
-    ]
-}}
-
-Be precise and assign high confidence (>0.9) only to clearly relevant tags."""
-
         try:
-            response = await ollama_service.generate_text(
-                prompt=prompt,
-                format="json",
-                temperature=0.3  # Lower temperature for consistency
-            )
+            # Delegate to DNAAnalyzer from mathesis_core
+            dna = await self.dna_analyzer.analyze(question_text)
 
-            result = await ollama_service.extract_json(response)
-            tags = result.get("tags", [])
+            # Extract tags from DNA result
+            tags = dna.get("tags", [])
 
-            # Validate and filter
+            # Validate and filter (same as before)
             valid_tags = []
             for tag_obj in tags:
                 if all(k in tag_obj for k in ["tag", "type", "confidence"]):
@@ -58,14 +64,24 @@ Be precise and assign high confidence (>0.9) only to clearly relevant tags."""
 
             return valid_tags
 
-        except Exception as e:
-            print(f"Tagging error: {e}")
+        except AnalysisError as e:
+            logger.error(f"Tagging error: {e}")
             # Fallback to basic keyword matching
+            return self._fallback_tagging(question_text)
+
+        except Exception as e:
+            logger.error(f"Unexpected tagging error: {e}")
             return self._fallback_tagging(question_text)
 
     async def generate_metadata(self, question_text: str) -> Dict:
         """
-        Generate comprehensive metadata using Ollama LLM.
+        Generate comprehensive metadata using DNAAnalyzer.
+
+        This method maintains backward compatibility with the original API.
+        Core logic is delegated to mathesis_core.analysis.DNAAnalyzer.
+
+        Args:
+            question_text: Question content
 
         Returns:
             {
@@ -73,89 +89,69 @@ Be precise and assign high confidence (>0.9) only to clearly relevant tags."""
                 "difficulty_estimation": float (0.0-1.0),
                 "estimated_time_minutes": int,
                 "subject_area": str,
-                "curriculum_path": str (e.g., "Math.Algebra.Quadratics")
+                "curriculum_path": str (e.g., "Math.Algebra.Quadratics"),
+                "requires_calculator": bool,
+                "language": str
             }
         """
-        prompt = f"""Analyze this educational question and provide metadata.
-
-Question:
-{question_text}
-
-Return JSON with exact fields:
-{{
-    "cognitive_level": "one of: Remember|Understand|Apply|Analyze|Evaluate|Create",
-    "difficulty_estimation": 0.0-1.0 (0.0=easiest, 1.0=hardest),
-    "estimated_time_minutes": integer (realistic time to solve),
-    "subject_area": "Math|Science|English|Social Studies|etc",
-    "curriculum_path": "Subject.Topic.Subtopic (e.g., Math.Algebra.Quadratics)",
-    "requires_calculator": true/false,
-    "language": "Korean|English|Mixed"
-}}"""
-
         try:
-            response = await ollama_service.generate_text(
-                prompt=prompt,
-                format="json",
-                temperature=0.2
-            )
+            # Delegate to DNAAnalyzer from mathesis_core
+            dna = await self.dna_analyzer.analyze(question_text)
 
-            metadata = await ollama_service.extract_json(response)
+            # Extract metadata from DNA result
+            metadata = dna.get("metadata", {})
 
-            # Set defaults for missing fields
+            # Set defaults for missing fields (backward compatibility)
             metadata.setdefault("cognitive_level", "Apply")
             metadata.setdefault("difficulty_estimation", 0.5)
             metadata.setdefault("estimated_time_minutes", 5)
             metadata.setdefault("subject_area", "General")
-            metadata.setdefault("curriculum_path", "General.Unknown")
+            metadata.setdefault("curriculum_path", dna.get("curriculum_path", "General.Unknown"))
             metadata.setdefault("requires_calculator", False)
             metadata.setdefault("language", "Korean")
 
             return metadata
 
+        except AnalysisError as e:
+            logger.error(f"Metadata generation error: {e}")
+            return self._default_metadata()
+
         except Exception as e:
-            print(f"Metadata generation error: {e}")
-            return {
-                "cognitive_level": "Apply",
-                "difficulty_estimation": 0.5,
-                "estimated_time_minutes": 5,
-                "subject_area": "General",
-                "curriculum_path": "General.Unknown",
-                "requires_calculator": False,
-                "language": "Korean"
-            }
+            logger.error(f"Unexpected metadata error: {e}")
+            return self._default_metadata()
 
     async def suggest_curriculum_path(self, question_text: str) -> str:
         """
-        Suggest ltree curriculum path for the question.
+        Suggest ltree curriculum path for the question using DNAAnalyzer.
 
-        Returns: String like "Math.Algebra.Quadratics.Factoring"
+        This method maintains backward compatibility with the original API.
+        Core logic is delegated to mathesis_core.analysis.DNAAnalyzer.
+
+        Args:
+            question_text: Question content
+
+        Returns:
+            String like "Math.Algebra.Quadratics.Factoring"
         """
-        prompt = f"""Given this question, suggest the most specific curriculum path in dot notation.
-
-Question: {question_text}
-
-Example paths:
-- Math.Algebra.Linear_Equations
-- Math.Geometry.Triangles.Pythagorean_Theorem
-- Science.Physics.Mechanics.Kinematics
-- Math.Calculus.Derivatives.Chain_Rule
-
-Return ONLY the path string, no explanation."""
-
         try:
-            path = await ollama_service.generate_text(
-                prompt=prompt,
-                temperature=0.1
-            )
-            # Clean up the response
+            # Delegate to DNAAnalyzer from mathesis_core
+            dna = await self.dna_analyzer.analyze(question_text)
+
+            # Extract curriculum path from DNA result
+            path = dna.get("curriculum_path", "General.Unknown")
+
+            # Clean up the response (same as before)
             path = path.strip().strip('"\'').split('\n')[0]
             return path if '.' in path else "General.Unknown"
-        except:
+
+        except Exception as e:
+            logger.error(f"Curriculum path suggestion error: {e}")
             return "General.Unknown"
 
     def _fallback_tagging(self, question_text: str) -> List[Dict]:
         """
         Simple keyword-based fallback when AI fails.
+        This is service-specific logic (not in mathesis_core).
         """
         tags = []
         text_lower = question_text.lower()
@@ -180,6 +176,18 @@ Return ONLY the path string, no explanation."""
             {"tag": "General", "type": "subject", "confidence": 0.5}
         ]
 
+    def _default_metadata(self) -> Dict:
+        """Return default metadata when analysis fails."""
+        return {
+            "cognitive_level": "Apply",
+            "difficulty_estimation": 0.5,
+            "estimated_time_minutes": 5,
+            "subject_area": "General",
+            "curriculum_path": "General.Unknown",
+            "requires_calculator": False,
+            "language": "Korean"
+        }
 
+
+# Singleton instance for backward compatibility
 tagging_service = TaggingService()
-

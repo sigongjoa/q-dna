@@ -1,4 +1,4 @@
-import React from 'react';
+
 import { ResponsiveSunburst } from '@nivo/sunburst';
 import { Box, Typography, Paper } from '@mui/material';
 

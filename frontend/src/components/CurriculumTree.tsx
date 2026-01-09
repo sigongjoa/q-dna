@@ -1,9 +1,7 @@
 import React, { useState } from 'react';
-import { List, ListItem, ListItemButton, ListItemIcon, ListItemText, Collapse, Checkbox } from '@mui/material';
+import { List, ListItem, ListItemButton, ListItemText, Collapse, Checkbox, Box } from '@mui/material';
 import ExpandLess from '@mui/icons-material/ExpandLess';
 import ExpandMore from '@mui/icons-material/ExpandMore';
-import FolderIcon from '@mui/icons-material/Folder';
-import InsertDriveFileIcon from '@mui/icons-material/InsertDriveFile';
 
 // Type definition mirroring Backend Ltree logic
 export interface CurriculumNode {
@@ -92,7 +90,7 @@ const TreeNode: React.FC<TreeNodeProps> = ({ node, selectedIds, onToggle }) => {
     );
 };
 
-import { Box } from '@mui/material';
+
 
 export default function CurriculumTree({ onSelectionChange }: { onSelectionChange: (ids: number[]) => void }) {
     const [selected, setSelected] = useState<number[]>([]);

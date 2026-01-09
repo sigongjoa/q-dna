@@ -15,8 +15,10 @@ class Settings(BaseSettings):
 
     # Ollama
     OLLAMA_BASE_URL: str = "http://localhost:11434"
+    OLLAMA_URL: str = "http://localhost:11434"  # Alias for mathesis_core compatibility
     OLLAMA_VISION_MODEL: str = "llama3.2-vision:11b"
     OLLAMA_TEXT_MODEL: str = "qwen2.5:latest"
+    OLLAMA_MODEL: str = "qwen2.5:latest"  # Default model for mathesis_core
 
     # CORS
     BACKEND_CORS_ORIGINS: str = "http://localhost:5173,http://localhost:3000"
