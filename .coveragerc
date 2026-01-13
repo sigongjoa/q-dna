@@ -1,0 +1,35 @@
+[run]
+branch = True
+source = backend/app
+omit =
+    */tests/*
+    */test_*.py
+    */__pycache__/*
+    */venv/*
+    */.venv/*
+    */node_modules/*
+    */frontend/*
+    */data/*
+    */docs/*
+    */alembic/*
+
+[report]
+precision = 2
+show_missing = True
+skip_covered = False
+fail_under = 100.00
+
+exclude_lines =
+    pragma: no cover
+    def __repr__
+    raise AssertionError
+    raise NotImplementedError
+    if __name__ == .__main__.:
+    if TYPE_CHECKING:
+    @abstractmethod
+
+[html]
+directory = htmlcov
+
+[xml]
+output = coverage.xml
