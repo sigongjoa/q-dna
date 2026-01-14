@@ -4,12 +4,35 @@ from unittest.mock import Mock, patch
 import sys
 
 # Mock sqlalchemy before imports to avoid database dependency
+class MockMapped:
+    """Mock for SQLAlchemy Mapped type that supports subscripting"""
+    def __getitem__(self, item):
+        return self
+
 mock_sqlalchemy = Mock()
+mock_ext = Mock()
+mock_ext.asyncio = Mock()
+mock_sqlalchemy.ext = mock_ext
+
+mock_orm = Mock()
+mock_orm.Mapped = MockMapped()
+mock_orm.mapped_column = Mock(return_value=None)
+mock_orm.relationship = Mock(return_value=None)
+mock_orm.DeclarativeBase = type('DeclarativeBase', (), {})
+
 sys.modules['sqlalchemy'] = mock_sqlalchemy
-sys.modules['sqlalchemy.orm'] = Mock()
+sys.modules['sqlalchemy.ext'] = mock_ext
+sys.modules['sqlalchemy.ext.asyncio'] = mock_ext.asyncio
+sys.modules['sqlalchemy.orm'] = mock_orm
 sys.modules['sqlalchemy.dialects'] = Mock()
 sys.modules['sqlalchemy.dialects.postgresql'] = Mock()
 sys.modules['sqlalchemy.sql'] = Mock()
+
+# Set mock attributes
+mock_sqlalchemy.Integer = Mock()
+mock_sqlalchemy.String = Mock()
+mock_sqlalchemy.Text = Mock()
+mock_sqlalchemy.ForeignKey = Mock(return_value=None)
 
 
 def test_question_model_structure():
