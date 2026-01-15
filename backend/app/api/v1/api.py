@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from app.api.v1.endpoints import questions, curriculum, tags, analytics, diagrams, cms, reports
+from app.api.v1.endpoints import questions, curriculum, tags, analytics, diagrams, cms, reports, cognitive_diagnosis
 
 api_router = APIRouter()
 api_router.include_router(questions.router, prefix="/questions", tags=["questions"])
@@ -9,3 +9,4 @@ api_router.include_router(analytics.router, prefix="/analytics", tags=["analytic
 api_router.include_router(diagrams.router, prefix="/diagrams", tags=["diagrams"])
 api_router.include_router(cms.router, prefix="/cms", tags=["cms"])
 api_router.include_router(reports.router, prefix="/reports", tags=["reports"])
+api_router.include_router(cognitive_diagnosis.router)  # LLM-based cognitive diagnosis (BKT/IRT replacement)
